@@ -1,32 +1,68 @@
 # Dockerized Web Application
 
-A two-service web application built with Flask, Redis, Docker, and Docker Compose.
+A small two-service application built with Flask, Redis, Docker, and Docker Compose. It demonstrates containerized application delivery, health checks, persistent data, and a basic CI/CD pipeline.
 
-## What it demonstrates
+## Architecture
 
-- Flask serves a page-visit counter backed by Redis.
-- Redis data persists in a Docker volume.
-- Compose manages the app, Redis, and their health checks.
-- The app runs as a non-root user and is exposed only on localhost.
-- Redis has no host port exposed.
+- **Flask + Gunicorn** serves the web page and health endpoint.
+- **Redis** stores the page-visit counter in a persistent named volume.
+- **Docker Compose** manages service startup, health checks, restart policies, and the internal network.
+- The web container runs as a non-root user, binds to localhost on the host, has a read-only root filesystem, drops Linux capabilities, and uses a restricted temporary filesystem.
+- Redis is not published to the host network and stores data in the named volume.
+
+## Requirements
+
+- Docker Engine
+- Docker Compose plugin
+- Python 3.12+ (only needed to run the unit tests outside Docker)
 
 ## Run
 
-Requirements: Docker Engine and the Docker Compose plugin.
+Start the stack:
 
-Start the app with `docker compose up --build -d`, then open
-<http://localhost:5000/>. Refresh the page to increment the counter.
+```bash
+docker compose up --build -d
+```
 
-Check health with `curl -i http://localhost:5000/health`.
-View logs with `docker compose logs --tail=50`.
+Open <http://localhost:5000/> and refresh to increment the Redis-backed visit counter.
 
-Stop the containers and keep Redis data with `docker compose down`.
-To also delete Redis data, run `docker compose down --volumes`.
+Check health:
 
-## Verification performed
+```bash
+curl -i http://localhost:5000/health
+docker compose ps
+docker compose logs --tail=50
+```
 
-- The health endpoint returned `{"redis":"connected","status":"healthy"}`.
-- Compose reported both services healthy.
-- The counter increased from 16 to 18 after container recreation, confirming
-  data persisted in the Redis volume. The volume was later removed with
-  `docker compose down --volumes`.
+Stop containers while preserving Redis data:
+
+```bash
+docker compose down
+```
+
+Delete the Redis volume as well:
+
+```bash
+docker compose down --volumes
+```
+
+## Run unit tests
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python -m unittest discover -s tests -v
+```
+
+The test suite covers page-visit increments and healthy/unhealthy Redis responses without requiring a running Redis service.
+
+## CI/CD
+
+GitHub Actions runs the Python unit tests, builds the Docker Compose stack, checks the application health endpoint, and verifies that the Redis counter increments. A successful push to `main` also builds and publishes an image to GitHub Container Registry using a commit-SHA tag and the `latest` tag.
+
+Dependabot checks Python, Docker image, and GitHub Actions dependencies weekly.
+
+## Configuration and security
+
+The sample application requires no application secrets. Keep Redis internal to the Compose network. The web service is bound to `127.0.0.1` by default; change that deliberately if you need external access, and place a reverse proxy with TLS and appropriate access controls in front of it.
